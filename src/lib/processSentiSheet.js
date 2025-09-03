@@ -260,7 +260,6 @@ function extractColumnData(parsedResult, textColumn) {
   
   const targetColumn = headers[columnIndex - 1]; // Convert to 0-based for array access
   console.log(`Using column ${columnIndex}: "${targetColumn}"`);
-  
   console.log(`Using column: "${targetColumn}" (from input: "${textColumn}")`);
   
   const columnData = data
@@ -270,22 +269,20 @@ function extractColumnData(parsedResult, textColumn) {
       originalRow: row
     }))
     .filter(item => {
-      // Filter based on your document's criteria
-      return item.text.length >= 2;
+      return item.text.length > 0; //filter non-whitespace 
     });
   
-  // Validate we have data to process
   if (columnData.length === 0) {
     throw new Error(`No valid text data found in column "${targetColumn}"`);
   }
   
   // Check for the 20% rule from your document
   const shortTextCount = columnData.filter(item => item.text.length < 2).length;
-  const totalRows = data.length;
+  const totalRows = columnData.length;
   const shortTextPercentage = (shortTextCount / totalRows) * 100;
   
   if (shortTextPercentage > 20) {
-    throw new Error("More than 20% of rows have less than 2 characters. This may indicate an output token attack or invalid data.");
+    throw new Error("More than 20% of cells in your selected column have less than 2 characters. Please check your spreadsheet again for malformed data.");
   }
   
   return columnData;
@@ -348,61 +345,42 @@ async function processBatch(batch, model, sentimentClassification) {
 
 async function callAIModel(prompt, model) {
   console.log('Calling AI model:', model);
-  console.log('Prompt:', prompt);
   
-  // Use the newer Google GenAI API
   if (model.includes('gemini')) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set');
     }
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI(process.env.GEMINI_API_KEY); // ✅ Pass key directly
+      const genModel = ai.getGenerativeModel({ model: 'gemini-2.5-flash-lite' }); // ✅ Get model first
       
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite',
-        contents: prompt,
+      // ✅ Correct API format
+      const response = await genModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [{ text: prompt }]
+        }],
         generationConfig: {
-          temperature: 0,  // Match Google AI Studio setting
+          temperature: 0,
           topP: 1,
           topK: 1,
           maxOutputTokens: 1000
         }
       });
       
-      console.log('Raw AI Response:', response);
+      // ✅ Proper response extraction
+      const text = response.response.text();
+      console.log('AI Response:', text);
+      return text;
       
-      // Extract the actual text content from the response
-      const textContent = response.candidates?.[0]?.content?.parts?.[0]?.text || 
-                         response.candidates?.[0]?.content?.text ||
-                         response.text ||
-                         JSON.stringify(response);
-      
-      console.log('Extracted text:', textContent);
-      return textContent;
     } catch (error) {
       console.error('Gemini API error:', error);
       throw new Error(`Gemini API failed: ${error.message}`);
     }
-  } else {
-    // For testing purposes, return a mock response
-    console.log('⚠️  Using mock response for testing - implement actual AI model calls');
-    
-    // Count how many texts we need to analyze (count the numbered items in prompt)
-    const textCount = (prompt.match(/\d+\. "/g) || []).length;
-    
-    // Determine the max number based on sentiment type from prompt
-    let maxNumber = 3; // Default for Basic
-    if (prompt.includes('Very Positive')) maxNumber = 5; // Granular
-    if (prompt.includes('Surprise')) maxNumber = 6; // Dr.Ekman
-    
-    // Return mock array of random sentiment numbers for testing
-    const mockNumbers = Array.from({ length: textCount }, () => 
-      Math.floor(Math.random() * maxNumber) + 1
-    );
-    
-    return `[${mockNumbers.join(', ')}]`;
   }
+  
+  // Mock response for testing...
 }
 
 function parseAIResponse(response, expectedCount, sentimentClassification) {
@@ -499,20 +477,10 @@ async function performSentimentAnalysis(columnData, model, sentimentClassificati
   let currentIndex = 0;
   for (let i = 0; i < batches.length; i++) {
     console.log(`Processing batch ${i + 1} of ${batches.length}`);
-    const batchResults = await processBatch(batches[i], model, sentimentClassification);
-    
-    // When we call onProgress here:
-    if (onProgress) {
-      onProgress({  // This executes the anonymous function from above
-        current: i + 1,
-        total: batches.length,
-        percentage: ((i + 1) / batches.length) * 100
-      });
-    }
 
     try {
       const batch = batches[i];
-      const batchResults = await processBatch(batch, model, sentimentClassification);
+      const batchResults = await processBatch(batch, model, sentimentClassification); 
       
       // Store results in correct positions
       batchResults.forEach((result, batchIndex) => {
@@ -525,6 +493,15 @@ async function performSentimentAnalysis(columnData, model, sentimentClassificati
       
       currentIndex += batch.length;
       
+      // // When we call onProgress here:
+      // if (onProgress) {
+      //     onProgress({
+      //       current: i + 1,
+      //       total: batches.length,
+      //       percentage: ((i + 1) / batches.length) * 100
+      //     });
+      // }
+
     } catch (error) {
       console.error(`Batch ${i + 1} failed:`, error);
       

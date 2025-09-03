@@ -177,6 +177,23 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Preview failed:', error);
-    res.status(400).json({ error: error.message });
+    
+    const clientErrors = [
+      'No file provided',
+      'Unsupported file type', 
+      'Invalid file type',
+      'not found',
+      'is empty'
+    ];
+    
+    const isClientError = clientErrors.some(msg => 
+      error.message.toLowerCase().includes(msg.toLowerCase())
+    );
+    
+    if (isClientError) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'The server failed to process file.' });
+    }
   }
 }

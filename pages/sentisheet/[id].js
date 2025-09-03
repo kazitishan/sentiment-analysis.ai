@@ -322,8 +322,8 @@ export default function SentisheetResults({ results, error }) {
   );
 }
 
-// Server-side rendering to load the results
-export async function getServerSideProps({ params }) {
+// Server-side rendering to load the results (fetch data on server → pass as props on the page's component → render immediately on client)
+export async function getServerSideProps({ params }) { //Dynamic route: params contains the route parameters. If the page name is [id].js, then params will look like { id: ... }.
   const { id } = params;
 
   // Validate UUID format
@@ -337,8 +337,8 @@ export async function getServerSideProps({ params }) {
   }
 
   try {
-    const resultsPath = path.join(process.cwd(), 'results', `${id}.json`);
-    
+    const resultsPath = path.join(process.cwd(), 'results', `${id}.json`); //sentiment-analysis.ai/results/<id>.json
+
     if (!fs.existsSync(resultsPath)) {
       return {
         props: {

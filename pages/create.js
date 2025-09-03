@@ -1,8 +1,9 @@
 //pages/create.js
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useEffect } from 'react';
+import { set, useForm } from 'react-hook-form';
 import { useRouter } from 'next/router';
 import Header from '@/components/Header';
+import { supabase } from '@/lib/supabase';
 
 export default function NewSentiSheetWithPreview() {
   const { register, handleSubmit, formState: { errors, isSubmitting, invalid, isSubmitSuccessful }, setValue, watch } = useForm();
@@ -15,6 +16,7 @@ export default function NewSentiSheetWithPreview() {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressInfo, setProgressInfo] = useState(null);
+
 
   /*register: registers individual input fields for validation
     handleSubmit: handles form submission and validation
@@ -117,38 +119,59 @@ export default function NewSentiSheetWithPreview() {
 
 const onSubmit = async (data) => {
   try {
-    setSubmitError(''); //clear any previous errors
-    const formData = new FormData();
-    formData.append('file', data.file[0]);
-    formData.append('textColumn', data.textColumn);
-    formData.append('sentimentClassification', data.sentimentClassification);
+    setSubmitError('');
     
-    if (selectedSheet) formData.append('sheetName', selectedSheet);
+    let { data: { session } } = await supabase.auth.getSession();
+    console.log('Initial session:', !!session?.user);
+    
+    if (!session?.user) {
+      console.log('Signing in anonymously...');
+      const { data: authData, error } = await supabase.auth.signInAnonymously();
+      if (error) {
+        console.error('Anonymous sign-in failed:', error);
+        setSubmitError(error.message);
+        return;
+      }
+      
+      // Wait a moment for cookies to be set
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const { data: { session: newSession } } = await supabase.auth.getSession();
+      session = newSession;
+      console.log('New session after anonymous sign-in:', !!session?.user);
+    }
+
+    // Debug: Log what cookies are being sent
+    console.log('Document cookies:', document.cookie);
+
+    const formData = new FormData();
+    // ... your form data setup
 
     const response = await fetch('/api/upload', {
       method: 'POST',
       body: formData,
+      credentials: 'include', // ← Add this to ensure cookies are sent
     });
 
-    if (!response.ok) { //since throw new Error() should have a error property
-      const errorData = await response.json();
-      const errorMessage = errorData.error || `HTTP ${response.status}`;
-      throw new Error(errorMessage);
-    }
-
-    const result = await response.json();
-    router.push(`/sentisheet/${result.id}`);
-    
+    // ... rest of your code
   } catch (error) {
-    setSubmitError(error.message); // Display to user
+    setSubmitError(error.message);
   }
 };
 
+const timeEstimation = (previewData) => {
+  if (!previewData) return null;
+
+  const totalRows = previewData.totalRows || 0;
+  const estimatedTime = Math.ceil(totalRows / 100) * 2; // Estimate 2 seconds per 100 rows
+
+  return estimatedTime
+};
 
   return (
   
     <>
-    {!isSubmitSuccessful && 
+    {!isSubmitting && 
       <>
       <Header bodyText="Submit SentiSheet request" className="text-center " />
       <progress value={calculateProgress()} max="2" className="w-full mt-2" /> {/*function is always called per render*/}
@@ -186,7 +209,7 @@ const onSubmit = async (data) => {
               onChange={handleFileUpload}
             />
         </label>
-        {setPreviewError && <span className="text-red-500 text-sm">{previewError}</span>}
+        {previewError && <span className="text-red-500 text-sm">{previewError}</span>}
         {errors.file && <span className="text-red-500 text-sm">{errors.file.message}</span>} 
 
         {/* Loading State */}
@@ -398,7 +421,13 @@ const onSubmit = async (data) => {
       </form>
     </>
   }
-  {isSubmitSuccessful && <div className="mt-4 text-green-500">Sentiment analysis form sent successfully!</div>}
+  {isSubmitting && (
+    <>
+      <Header bodyText="Processing request" className="text-center " />
+      <p> We received your SentiSheet request and are currently processing your request right now. </p>
+      <p> Estimated processing time: {timeEstimation(previewData)} seconds </p>
+    </>
+  )}
   </>
   )
 }

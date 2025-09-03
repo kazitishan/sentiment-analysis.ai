@@ -1,67 +1,75 @@
 // pages/api/upload.js
-import { processFileUpload } from '../../src/lib/processSentiSheet';
+import { createServerClient } from "@supabase/ssr";
+import { processFileUpload } from "@/lib/processSentiSheet";
 
-// IMPORTANT: Disable Next.js body parser for file uploads
-export const config = {
-  api: {
-    bodyParser: false,
-    sizeLimit: '3mb', // 1mb additional overhead
-  },
-};
-
-export default async function handler(req, res) { 
-  //"API Routes do not specify CORS headers, meaning they are same-origin only by default."
-  // // Cross-Origin Resource Sharing (CORS) handling
-  // const allowedOrigins = ['https://sentiment-analysis.ai', 'http://localhost:3000'];
-  // const origin = req.headers.origin;
-
-  // if (!allowedOrigins.includes(origin)) {
-  //   return res.status(403).json({ error: 'Forbidden' });
-  // }
-
-  // Only allow POST requests
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Set request timeout (5 minutes)
-  const timeoutId = setTimeout(() => {
-    if (!res.headersSent) {
-      res.status(408).json({ error: 'Request timeout' });
-    }
-  }, 5 * 60 * 1000);
-
   try {
-    // Process the file upload and sentiment analysis
+
+    // 1. Authentication - Add cookie configuration
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          getAll() {
+            return Object.keys(req.cookies).map(name => ({
+              name,
+              value: req.cookies[name]
+            }));
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              res.setHeader('Set-Cookie', `${name}=${value}; Path=/; ${options ? Object.entries(options).map(([k, v]) => `${k}=${v}`).join('; ') : ''}`);
+            });
+          },
+        },
+      }
+    );
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    console.log('User authenticated:', user.id);
+
+    // Remove this line - trigger already created the user
+    // await ensureUserExists(supabase, user.id);
+
+    // Process file
     const result = await processFileUpload(req);
-    
-    clearTimeout(timeoutId);
-    
-    // Return JSON for client-side redirect (SPA approach)
-    res.status(200).json({
+    console.log('Processing completed:', result.id);
+
+    // Create sentisheet record (this will work because user exists from trigger)
+    const { data: sentisheet, error: insertError } = await supabase
+      .from('sentisheets')
+      .insert({
+        user_id: user.id,
+        file_name: result.metadata.filename,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new Error(`Database insert failed: ${insertError.message}`);
+    }
+
+    return res.status(200).json({
       success: true,
-      id: result.id,
-      redirectUrl: `/sentisheet/${result.id}`,
+      id: sentisheet.id,
+      redirectUrl: `/sentisheet/${sentisheet.id}`,
       metadata: result.metadata
     });
-    
+
   } catch (error) {
-    clearTimeout(timeoutId);
     console.error('Upload processing failed:', error);
-    
-    let statusCode = 400; //default to bad request
-    
-    if (error.name === 'FileSizeError' || error.code === 'LIMIT_FILE_SIZE') {
-      statusCode = 413; //payload too large
-    } else if (error.name === 'TimeoutError') {
-      statusCode = 408; //request timeout
-    } else if (error.name === 'ValidationError' || error.name === 'FileTypeError') {
-      statusCode = 400; //bad request
-    } else if (error.name === 'ProcessingError') {
-      statusCode = 422; //unprocessable entity
-    } else if (!error.name || error.name === 'Error') {
-      statusCode = 500; //internal server error
-    }
-    res.status(statusCode).json({ error: error.message });
+    return res.status(500).json({ error: error.message || 'Processing failed' });
   }
 }
+
+// Remove the ensureUserExists function entirely

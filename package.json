@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.13.0",
-    "@supabase/ssr": "^0.6.1",
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.56.0",
     "dotenv": "^17.2.1",
     "formidable": "^3.5.4",
     "next": "15.4.5",
