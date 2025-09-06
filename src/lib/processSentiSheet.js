@@ -157,49 +157,21 @@ function estimateTokenUsage(columnData, sentimentClassification) {
   return estimatedTotalTokens;
 }
 
-// src/lib/processSentiSheet.js
 async function checkDailyUsage(userId, estimatedTokens, supabase) {
   try {
     // Try to get existing user, if they don't exist, create them
     const { data: users, error } = await supabase
       .from('users')
-      .upsert({ 
-        id: userId, 
-        daily_usage_count: 0,
-        subscription_id: null
-      }, { 
-        onConflict: 'id',
-        ignoreDuplicates: true // Don't overwrite existing users
-      })
-      .select('daily_usage_count, subscription_id')
-      .single();
+      .select()
+      .eq('id', userId)
+      .single(); 
 
-    if (error) {
-      console.error('Upsert failed, trying select only:', error);
-      // Fallback: try to select the user that might have been created by another request
-      const { data: fallbackUsers, error: selectError } = await supabase
-        .from('users')
-        .select('daily_usage_count, subscription_id')
-        .eq('id', userId)
-        .single();
-      
-      if (selectError) {
-        // If still failing, assume user doesn't exist and they have 0 usage
-        console.warn('User not found in users table, assuming 0 usage');
-        const currentUsage = 0;
-        return checkLimitsAndReturn(currentUsage, estimatedTokens);
-      }
-      
-      return checkLimitsAndReturn(
-        fallbackUsers.daily_usage_count || 0, 
-        estimatedTokens, 
-        fallbackUsers.subscription_id
-      );
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+      console.error('Failed to retrieve user data:', error);
+      throw new Error(`Failed to retrieve user data: ${error.message}`);
     }
 
-    const currentUsage = users.daily_usage_count || 0;
-    return checkLimitsAndReturn(currentUsage, estimatedTokens, users.subscription_id);
-    
+    return checkLimitsAndReturn(users.daily_usage_count, estimatedTokens, supabase, users.subscription_id);
   } catch (error) {
     console.error('Usage check failed:', error);
     throw new Error(`Usage check failed: ${error.message}`);
@@ -207,17 +179,29 @@ async function checkDailyUsage(userId, estimatedTokens, supabase) {
 }
 
 // Helper function to check limits and return usage info
-function checkLimitsAndReturn(currentUsage, estimatedTokens, subscriptionId = null) {
-  // Determine user limits based on subscription
-  const isAnonymous = !subscriptionId; // No subscription = anonymous/free
-  const dailyLimit = isAnonymous ? 25000 : 250000;
-  
+async function checkLimitsAndReturn(currentUsage, estimatedTokens, supabase, subscriptionId) {
+  //TODO ⚠️: integrate with Stripe to get actual subscription plan limits
+  try {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  let dailyLimit;
+  if (error) {
+    console.error('Failed to retrieve user information:', error);
+    throw new Error(`Failed to retrieve user information: ${error.message}`);
+  }
+  if (user?.is_anonymous) {
+    console.log('Anonymous user detected');
+    dailyLimit = 25000;
+  } else {
+    console.log('Registered user detected');
+    dailyLimit = 250000;
+  }
+
   const totalAfterProcessing = currentUsage + estimatedTokens;
   
   if (totalAfterProcessing > dailyLimit) {
     throw new Error(`Daily token limit exceeded. Current usage: ${currentUsage}, Estimated tokens needed: ${estimatedTokens}, Daily limit: ${dailyLimit}`);
   }
-  
+
   return {
     currentUsage,
     estimatedTokens,
@@ -225,6 +209,10 @@ function checkLimitsAndReturn(currentUsage, estimatedTokens, subscriptionId = nu
     dailyLimit,
     remainingTokens: dailyLimit - currentUsage
   };
+  } catch (error) {
+    console.error('Error determining user limits:', error);
+    throw new Error(`Error determining user limits: ${error.message}`);
+  }
 }
 
 async function updateDailyUsage(userId, tokensUsed, supabase) {
@@ -486,9 +474,9 @@ async function processBatch(batch, model, sentimentClassification) {
     const response = await callAIModel(prompt, model);
     
     // Parse the response and match it back to the batch items
-    const sentiments = parseAIResponse(response, batch.length, sentimentClassification);
+    const sentiments = parseAIResponse(response.textContent, batch.length, sentimentClassification);
     
-    return sentiments;
+    return {sentiments, tokenUsage: response.tokenUsage};
   } catch (error) {
     console.error('Batch processing failed:', error);
     // Return default values for failed batch
@@ -529,7 +517,7 @@ async function callAIModel(prompt, model) {
       console.log('Extracted text:', textContent);
       const tokenUsage = response?.usageMetadata.totalTokenCount;
 
-      return textContent;
+      return { textContent, tokenUsage };
 
 
     } catch (error) {
@@ -657,12 +645,12 @@ async function performSentimentAnalysis(columnData, model, sentimentClassificati
       const batchResults = await processBatch(batch, model, sentimentClassification); 
       
       // Store results in correct positions
-      batchResults.forEach((result, batchIndex) => {
+      batchResults.sentiments.forEach((result, batchIndex) => {
         allResults[currentIndex + batchIndex] = result;
       });
       
-      // Calculate token usage (approximate)
-      const batchTokens = batch.reduce((sum, item) => sum + Math.ceil(item.text.length / 4), 0);
+      // Calculate token usage (exact from processBatch)
+      const batchTokens = batchResults.tokenUsage;  
       totalTokensUsed += batchTokens;
       
       currentIndex += batch.length;
@@ -705,8 +693,8 @@ async function performSentimentAnalysis(columnData, model, sentimentClassificati
             allResults[failedItem.originalIndex] = result;
           });
           
-          // Calculate retry token usage
-          const retryTokens = retryBatch.reduce((sum, item) => sum + Math.ceil(item.text.length / 4), 0);
+          // Calculate precise token usage
+          const retryTokens = retryResults.tokenUsage;
           totalTokensUsed += retryTokens;
           
           retryIndex += retryBatch.length;

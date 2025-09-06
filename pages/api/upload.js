@@ -43,11 +43,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    console.log('User authenticated:', user.id, 'Email:', user.email);
+    console.log('User authenticated:', user.id, 'Email:', user.email || 'Anonymous');
 
-    // Debug: Check if user exists in auth.users table using a simple query
+    // Debug: Check if user exists in public.users table using a simple query
     const { data: userExists, error: userCheckError } = await supabase
-      .from('auth.users')
+      .from('users')
       .select('id')
       .eq('id', user.id)
       .single();
@@ -113,19 +113,21 @@ export default async function handler(req, res) {
         id: result.id,
         file_name: result.outputFile.filename,
         file_url: publicUrl,
-        analysis_results: result.metadata,
+        analysis_results: {...result.results, ...result.metadata}, //previously result.metadata union type | indicates additional properties for excel files
         created_at: new Date().toISOString()
       })
       .select()
       .single();
-
+      //Without the .select() method, the insert() operation will primarily return a success or error indication, but not the actual inserted row(s).
     if (insertError) {
       console.error('Database insert error:', insertError);
       console.error('Insert data was:', {
         user_id: user.id,
         id: result.id,
         file_name: result.outputFile.filename,
-        file_url: publicUrl
+        file_url: publicUrl,
+        analysis_results: {...result.results, ...result.metadata},
+        created_at: new Date().toISOString()
       });
       throw new Error(`Database insert failed: ${insertError.message}`);
     }
