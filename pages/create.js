@@ -4,8 +4,10 @@ import { set, useForm } from 'react-hook-form';
 import { useRouter } from 'next/router';
 import Header from '@/components/Header';
 import { supabase } from '@/lib/supabase';
+import { createServerClient } from '@supabase/ssr'
 
-export default function NewSentiSheetWithPreview() {
+
+export default function NewSentiSheetWithPreview({ isPremiumUser }) {
   const { register, handleSubmit, formState: { errors, isSubmitting, invalid, isSubmitSuccessful }, setValue, watch } = useForm();
   const [previewData, setPreviewData] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState(null);
@@ -116,6 +118,59 @@ export default function NewSentiSheetWithPreview() {
       }
     }
   };
+  const AIModels = [
+    {
+      name: 'Google Gemini 2.5 Flash-Lite',
+      value: 'gemini-2.5-flash-lite',
+      speed: 3,
+      intelligence: 1,
+      premium: false 
+    },
+    {
+      name: 'Gemini 2.5 Flash',
+      value: 'gemini-2.5-flash',
+      speed: 2,
+      intelligence: 2,
+      premium: true
+    },
+    {
+      name: 'Google Gemini 2.5 Pro',
+      value: 'gemini-2.5-pro',
+      speed: 1,
+      intelligence: 3,
+      premium: true
+    },
+    {
+      name: 'OpenAI GPT-5-nano',
+      value: 'gpt-5-nano',
+      speed: 3,
+      intelligence: 2,
+      premium: true
+    },
+    {
+      name: 'OpenAI GPT-5 mini',
+      value: 'gpt-5-mini',
+      speed: 4,
+      intelligence: 3,
+      premium: true
+    },
+    {
+      name: 'OpenAI GPT-5',
+      value: 'gpt-5',
+      speed: 5,
+      intelligence: 4,
+      premium: true
+    },
+    {
+      name: 'Anthropic Claude 4 Sonnet',
+      value: 'claude-sonnet-4-20250514',
+      speed: 4,
+      intelligence: 3,
+      premium: true
+    }
+  ]
+
+
 
 const onSubmit = async (data) => {
   try {
@@ -133,6 +188,7 @@ const onSubmit = async (data) => {
     formData.append('textColumn', data.textColumn);
     formData.append('sentimentClassification', data.sentimentClassification);
     if (selectedSheet) formData.append('sheetName', selectedSheet);
+    formData.append('aiModel', data.aiModel);
 
     const response = await fetch('/api/upload', {
       method: 'POST',
@@ -399,7 +455,48 @@ const timeEstimation = (previewData) => {
           </div>
           {errors.sentimentClassification && <span className="text-red-500 text-sm">{errors.sentimentClassification.message}</span>}
         </fieldset>
-        {/* Submit Button - Always visible but disabled until requirements met */}
+        <fieldset className="w-full">
+        <legend className="text-2xl font-semibold mb-4">AI Model</legend>
+        <table className="w-full text-left border-collapse border">
+          <thead>
+            <tr className="">
+              <th className="p-3">Model name</th>
+              <th className="p-3">Speed</th>
+              <th className="p-3">Intelligence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {AIModels.map((model, index) => (
+              <tr key={index} className="hover:bg-gray-50 cursor-pointer">
+                <td>
+                  <label className="flex items-start space-x-3 p-4 cursor-pointer">
+                    <input
+                      {...register("aiModel", { required: "AI model is required." })}
+                      type="radio"
+                      value={model.value}
+                      className="mt-2"
+                      disabled={model.premium && !isPremiumUser}
+                    />
+                    <p className="font-semibold">{model.name}</p>
+                  </label>
+                </td>
+                <td>
+                  <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-sm font-medium rounded">
+                    {model.speed}
+                  </span>
+                </td>
+                <td>
+                  <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded">
+                    {model.intelligence}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {errors.aiModel && <span className="text-red-500 text-sm">{errors.aiModel.message}</span>}
+      </fieldset>
+{/* Submit Button - Always visible but disabled until requirements met */}
         <button 
           type="submit"
           disabled={isSubmitting || !selectedColumn}
@@ -424,4 +521,59 @@ const timeEstimation = (previewData) => {
   )}
   </>
   )
+}
+
+export async function getServerSideProps({ params, req, res }) { //parameter that contains 
+  try {
+        const supabase = createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          {
+            cookies: {
+              getAll() {
+                return Object.keys(req.cookies).map(name => ({
+                  name,
+                  value: req.cookies[name]
+                }));
+              },
+              setAll(cookiesToSet) {
+                cookiesToSet.forEach(({ name, value, options }) => {
+                  res.setHeader('Set-Cookie', `${name}=${value}; Path=/; ${options ? Object.entries(options).map(([k, v]) => `${k}=${v}`).join('; ') : ''}`);
+                });
+              },
+            },
+          }
+        );
+    // Get the session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    let isPremiumUser = false;
+    
+    if (session?.user) {
+      // Check if user exists in users table and has subscription_id
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('subscription_id')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (!error && userData?.subscription_id) {
+        isPremiumUser = true;
+      }
+    }
+    console.log('isPremiumUser:', isPremiumUser);
+    
+    return {
+      props: {
+        isPremiumUser
+      }
+    };
+  } catch (error) {
+    console.error('Error checking user subscription:', error);
+    return {
+      props: {
+        isPremiumUser: false
+      }
+    };
+  }
 }

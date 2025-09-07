@@ -157,9 +157,8 @@ function estimateTokenUsage(columnData, sentimentClassification) {
   return estimatedTotalTokens;
 }
 
-async function checkDailyUsage(userId, estimatedTokens, supabase) {
+async function checkDailyUsage(userId, estimatedTokens, supabase, model) { //TODO: 
   try {
-    // Try to get existing user, if they don't exist, create them
     const { data: users, error } = await supabase
       .from('users')
       .select()
@@ -170,10 +169,13 @@ async function checkDailyUsage(userId, estimatedTokens, supabase) {
       console.error('Failed to retrieve user data:', error);
       throw new Error(`Failed to retrieve user data: ${error.message}`);
     }
-
+    const premiumModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'claude-sonnet-4-20250514'];
+    if (model && premiumModels.includes(model) && !users?.is_premium) {
+      throw new Error(`The selected AI model "${model}" is available for premium users only. Please upgrade your account to access this model.`);
+    }
     return checkLimitsAndReturn(users.daily_usage_count, estimatedTokens, supabase, users.subscription_id);
   } catch (error) {
-    console.error('Usage check failed:', error);
+    console.error('Authentication check failed:', error);
     throw new Error(`Usage check failed: ${error.message}`);
   }
 }
@@ -258,7 +260,7 @@ async function parseFormData(req) {
   const sheetName = Array.isArray(fields.sheetName) 
   ? fields.sheetName[0] 
   : fields.sheetName; // For Excel files with multiple sheets
-  const model = fields.model?.[0] || 'gemini-2.5-flash-lite'; //defaults to gemini-2.5-flash-lite instead of undefined (or errors without optional chaining)
+  const aiModel = fields.aiModel?.[0] || 'gemini-2.5-flash-lite'; //defaults to gemini-2.5-flash-lite instead of undefined (or errors without optional chaining)
 
   if (!file || !textColumn || !sentimentClassification) {
     throw new Error("Missing required fields: file, textColumn, or sentimentClassification");
@@ -281,7 +283,7 @@ async function parseFormData(req) {
     throw new Error("Invalid sentiment classification. Must be Basic, Granular, or Dr.Ekman.");
   }
 
-  return { file, textColumn, sentimentClassification, model, sheetName };
+  return { file, textColumn, sentimentClassification, aiModel, sheetName };
 }
 
 // =============================================================================
@@ -493,21 +495,58 @@ async function callAIModel(prompt, model) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set');
     }
-    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite',
-        contents: prompt,
+      let response;
+      switch(model) {
+        case 'gemini-2.5-flash-lite':
+          response = await ai.models.generateContent({
+          model: model,
+          contents: prompt,
         generationConfig: {
           temperature: 0,  // Match Google AI Studio setting
           topP: 1,
           topK: 1,
           maxOutputTokens: 1000
         }
-      });
-      
+        });
+        break;
+        case 'gemini-2.5-flash':
+          response = await ai.models.generateContent({
+            model: model,
+            contents: prompt,
+            generationConfig: {
+              temperature: 0,
+              topP: 1,
+              topK: 1,
+              maxOutputTokens: 1000
+            },
+            config: {
+              thinkingConfig: {
+                thinkingBudget: 50
+              }
+            }
+          });
+          break;
+        case 'gemini-2.5-pro':
+          response = await ai.models.generateContent({
+            model: model,
+            contents: prompt,
+            generationConfig: {
+              temperature: 0,
+              topP: 1,
+              topK: 1,
+              maxOutputTokens: 1000
+            },
+            config: {
+              thinkingConfig: {
+                thinkingBudget: 128
+              }
+            }
+          });
+          break;          
+      }
+
       console.log('Raw AI Response:', response);
       
       // Extract the actual text content from the response
@@ -525,23 +564,7 @@ async function callAIModel(prompt, model) {
       throw new Error(`Gemini API failed: ${error.message}`);
     }
   } else {
-    // For testing purposes, return a mock response
-    console.log('⚠️  Using mock response for testing - implement actual AI model calls');
-    
-    // Count how many texts we need to analyze (count the numbered items in prompt)
-    const textCount = (prompt.match(/\d+\. "/g) || []).length;
-    
-    // Determine the max number based on sentiment type from prompt
-    let maxNumber = 3; // Default for Basic
-    if (prompt.includes('Very Positive')) maxNumber = 5; // Granular
-    if (prompt.includes('Surprise')) maxNumber = 6; // Dr.Ekman
-    
-    // Return mock array of random sentiment numbers for testing
-    const mockNumbers = Array.from({ length: textCount }, () => 
-      Math.floor(Math.random() * maxNumber) + 1
-    );
-    
-    return `[${mockNumbers.join(', ')}]`;
+    throw new Error(`Unsupported AI model: ${model}`);
   }
 }
 
@@ -820,20 +843,20 @@ async function saveResults(sheetId, data) {
 export async function processFileUpload(req, userId, supabase) {
   try {
     // Parse form data
-    const { file, textColumn, sentimentClassification, model, sheetName } = await parseFormData(req);
+    const { file, textColumn, sentimentClassification, aiModel, sheetName } = await parseFormData(req);
     const parsedResult = await parseSpreadsheet(file, sheetName);
     const columnData = extractColumnData(parsedResult, textColumn);
 
     const estimatedTokens = estimateTokenUsage(columnData, sentimentClassification);
     console.log(`Estimated token usage: ${estimatedTokens}`);
 
-    const usageCheck = await checkDailyUsage(userId, estimatedTokens, supabase);
+    const usageCheck = await checkDailyUsage(userId, estimatedTokens, supabase, aiModel);
     console.log('Usage check passed:', usageCheck);
 
     // Pass userId through to performSentimentAnalysis
     const analysisResults = await performSentimentAnalysis(
       columnData, 
-      model, 
+      aiModel, 
       sentimentClassification,
     );
     
@@ -846,7 +869,7 @@ export async function processFileUpload(req, userId, supabase) {
       analysisResults, 
       file, 
       sheetName,
-      model
+      aiModel
     );
     
     // Generate unique ID and prepare results data
@@ -860,7 +883,7 @@ export async function processFileUpload(req, userId, supabase) {
         filename: file.originalFilename,
         textColumn,
         sentimentClassification,
-        model,
+        aiModel,
         processedRows: columnData.length,
         timestamp: new Date().toISOString()
       }
@@ -877,7 +900,7 @@ export async function processFileUpload(req, userId, supabase) {
         ...parsedResult.metadata,
         filename: file.originalFilename,
         processedRows: columnData.length,
-        model,
+        aiModel,
         textColumn,
         sentimentClassification
       }
