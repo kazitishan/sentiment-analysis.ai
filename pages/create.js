@@ -499,9 +499,9 @@ const timeEstimation = (previewData) => {
 {/* Submit Button - Always visible but disabled until requirements met */}
         <button 
           type="submit"
-          disabled={isSubmitting || !selectedColumn}
+          disabled={isSubmitting }
           className={`px-8 py-3 rounded-lg text-xl font-semibold transition-colors ${
-            isSubmitting || !selectedColumn
+            isSubmitting 
               ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
               : 'bg-blue-500 text-white hover:bg-blue-600'
           }`}
@@ -545,7 +545,7 @@ export async function getServerSideProps({ params, req, res }) { //parameter tha
           }
         );
     // Get the session
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession(); //this is mainly a client-sided check, ignore warnings from supabase
     
     let isPremiumUser = false;
     

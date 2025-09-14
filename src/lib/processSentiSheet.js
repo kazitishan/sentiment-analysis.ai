@@ -5,6 +5,8 @@ import XLSX from 'xlsx';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
+import Anthropic from "@anthropic-ai/sdk";
 import { supabase } from '@/lib/supabase';
 
 
@@ -170,7 +172,7 @@ async function checkUserStatus(userId, estimatedTokens, supabase, model) {
       throw new Error(`Failed to retrieve user data: ${error.message}`);
     }
     const premiumModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'claude-sonnet-4-20250514'];
-    if (model && premiumModels.includes(model) && !users?.is_premium) {
+    if (model && premiumModels.includes(model) && !users?.subscription_id) {
       throw new Error(`The selected AI model "${model}" is available for premium users only. Please upgrade your account to access this model.`);
     }
     return checkLimitsAndReturn(users.daily_usage_count, estimatedTokens, supabase, users.subscription_id);
@@ -458,13 +460,13 @@ function generatePrompt(batchTexts, sentimentClassification) {
 
   return `Classify the ${config.description} for each text. Answer only with an array of the corresponding numbers:
 
-${config.options.join('\n')}
+  ${config.options.join('\n')}
 
-Here is the list of texts to analyze:
+  Here is the list of texts to analyze:
 
-${batchTexts.map((text, index) => `${index + 1}. "${text}"`).join('\n')}
+  ${batchTexts.map((text, index) => `${index + 1}. "${text}"`).join('\n')}
 
-Response format: [number, number, number, ...]`;
+  Response format: [number, number, number, ...]`;
 }
 
 async function processBatch(batch, model, sentimentClassification) {
@@ -489,30 +491,29 @@ async function processBatch(batch, model, sentimentClassification) {
 async function callAIModel(prompt, model) {
   console.log('Calling AI model:', model);
   console.log('Prompt:', prompt);
-  
-  // Use the newer Google GenAI API
+  let response;
+  let textContent; 
+  let tokenUsage;  
+
   if (model.includes('gemini')) {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY environment variable not set');
-    }
+    if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY environment variable not set');
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      let response;
+      const Gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       switch(model) {
         case 'gemini-2.5-flash-lite':
-          response = await ai.models.generateContent({
+          response = await Gemini.models.generateContent({
           model: model,
           contents: prompt,
-        generationConfig: {
-          temperature: 0,  // Match Google AI Studio setting
-          topP: 1,
-          topK: 1,
-          maxOutputTokens: 1000
+          generationConfig: {
+            temperature: 0,  // Match Google AI Studio setting
+            topP: 1,
+            topK: 1,
+            maxOutputTokens: 1000
         }
         });
         break;
         case 'gemini-2.5-flash':
-          response = await ai.models.generateContent({
+          response = await Gemini.models.generateContent({
             model: model,
             contents: prompt,
             generationConfig: {
@@ -529,7 +530,7 @@ async function callAIModel(prompt, model) {
           });
           break;
         case 'gemini-2.5-pro':
-          response = await ai.models.generateContent({
+          response = await Gemini.models.generateContent({
             model: model,
             contents: prompt,
             generationConfig: {
@@ -544,28 +545,103 @@ async function callAIModel(prompt, model) {
               }
             }
           });
-          break;          
-      }
-
-      console.log('Raw AI Response:', response);
-      
-      // Extract the actual text content from the response
-      const textContent = response?.text;
-
-
-      console.log('Extracted text:', textContent);
-      const tokenUsage = response?.usageMetadata.totalTokenCount;
-
-      return { textContent, tokenUsage };
-
-
+        break;
+        default:
+          throw new Error(`Unsupported Gemini model: ${model}`);  
+        }
     } catch (error) {
       console.error('Gemini API error:', error);
-      throw new Error(`Gemini API failed: ${error.message}`);
+      throw new Error(`We were unable to process your Gemini SentiSheet request: ${error.message}`);
     }
-  } else {
-    throw new Error(`Unsupported AI model: ${model}`);
+  }          
+  if (model.startsWith('gpt')) {
+    try {
+        const GPT = new OpenAI();
+        switch(model) {
+          case 'gpt-5-nano':
+          response = await GPT.responses.create({
+            model: model,
+            input: prompt,
+            reasoning: {
+              effort: 'minimal'
+            },            
+            text: {
+              verbosity: 'low'
+            }
+          });
+          break;
+          case 'gpt-5-mini':
+          response = await GPT.responses.create({
+            model: model,
+            input: prompt,
+            reasoning: {
+              effort: 'minimal'
+            },            
+            text: {
+              verbosity: 'low'
+            }
+          });
+          break;
+          case 'gpt-5':
+          response = await GPT.responses.create({
+            model: model,
+            input: prompt,
+            temperature: 0,
+            reasoning: {
+              effort: 'minimal'
+            },
+            text: {
+              verbosity: 'low'
+            }
+          });
+          break;
+          default:
+            throw new Error(`Unsupported GPT model: ${model}`);
+        }
+    } catch (error) {
+      console.error('GPT API error:', error);
+      throw new Error(`We were unable to process your GPT SentiSheet request: ${error.message}`);
+    }
   }
+  if (model.startsWith('claude-sonnet')) {
+    try {
+      const Claude = new Anthropic();
+      response = await Claude.messages.create({
+        model: model,
+        max_tokens: 1000,
+        messages: [
+           {
+            role: 'user',
+            content: prompt
+          }
+          ]
+        });
+      } catch (error) {
+        console.error('Claude API error:', error);
+        throw new Error(`We were unable to process your Claude SentiSheet request: ${error.message}`);
+      }
+    }
+
+    console.log('Raw AI Response:', response);
+      
+    // Extract the actual text content from the response
+    if (model.startsWith('gemini')) {
+      textContent = response.text;
+      tokenUsage = response.usageMetadata.totalTokenCount;
+    } 
+    if (model.startsWith('gpt')) {
+      textContent = response.output_text;
+      tokenUsage = response.usage.total_tokens;
+    }
+    if (model.startsWith('claude-sonnet')) {
+      textContent = response.content[0].text
+      tokenUsage = response.usage.input_tokens + response.usage.output_tokens;
+    }
+      
+    console.log('Extracted text:', textContent);
+    console.log('Token usage:', tokenUsage);
+
+    return { textContent, tokenUsage };
 }
 
 function parseAIResponse(response, expectedCount, sentimentClassification) {
@@ -908,6 +984,6 @@ export async function processFileUpload(req, userId, supabase) {
     
   } catch (error) {
     console.error('Processing failed:', error);
-    throw new Error(`Processing failed: ${error.message}`);
+    throw new Error(error.message); //an error would previously look like "Processing failed: Usage check failed: The selected AI model "gemini-2.5-flash" is available for premium users only. Please upgrade your account to access this model."
   }
 }
