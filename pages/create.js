@@ -11,7 +11,9 @@ import Sidebar from '@/components/Sidebar';
 
 
 export default function NewSentiSheetWithPreview({ isPremiumUser, isAnonymous, sentiSheetLinks }) {
-  const { register, handleSubmit, formState: { errors, isSubmitting, invalid, isSubmitSuccessful }, setValue, watch } = useForm();
+  const { register, handleSubmit, resetField, formState: { errors, isSubmitting, isValid }, setValue, watch } = useForm({
+    mode: 'onChange' //enable real-time validation
+  });
   const [previewData, setPreviewData] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -40,6 +42,13 @@ export default function NewSentiSheetWithPreview({ isPremiumUser, isAnonymous, s
     watch: subscribes to form field changes
   */
   const router = useRouter(); //to redirect when successful POST 
+
+  useEffect(() => {
+    // Clear custom sentiments if sentimentClassification changes away from 'Custom'
+    if (watch('sentimentClassification') !== 'Custom') {
+      resetField('customSentiments'); //resets value AND error
+    }
+  }, [watch('sentimentClassification')]);
 
   const calculateProgress = () => {
     let progress = 0;
@@ -84,7 +93,7 @@ export default function NewSentiSheetWithPreview({ isPremiumUser, isAnonymous, s
       });
 
       if (!response.ok) {
-        throw new Error('Failed to preview file');
+        throw new Error('Failed to preview file: ' + (await response.json()).error);
       }
 
       const preview = await response.json();
@@ -203,7 +212,14 @@ const onSubmit = async (data) => {
     const formData = new FormData();
     formData.append('file', data.file[0]);
     formData.append('textColumn', data.textColumn);
-    formData.append('sentimentClassification', data.sentimentClassification);
+
+    // For custom sentiments, send the custom text as sentimentClassification
+    // For standard options, send the selected option name
+    const sentimentValue = data.sentimentClassification === 'Custom'
+      ? data.customSentiments //the actual custom sentiments text
+      : data.sentimentClassification;
+    formData.append('sentimentClassification', sentimentValue);
+
     if (selectedSheet) formData.append('sheetName', selectedSheet);
     formData.append('aiModel', data.aiModel);
     if (isAnonymous && captchaToken) formData.append('captchaToken', captchaToken); // For anonymous user verification
@@ -267,9 +283,9 @@ console.log('isAnonymous:', isAnonymous);
                     fileSize: (fileList) => {
                       if (!fileList || fileList.length === 0) return true;
                       const file = fileList[0];
-                      const maxSize = 2 * 1024 * 1024; // 2MB
+                      const maxSize = 3 * 1024 * 1024; // 3MB
                       if (file.size > maxSize) {
-                        return "File size must be less than 2MB";
+                        return "File size must be less than 3MB";
                       }
                       return true;
                     }
@@ -472,7 +488,52 @@ console.log('isAnonymous:', isAnonymous);
                   <span>Surprise</span>
                 </div>
               </div>
-            </label>
+            </label> 
+              <label className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+              <input
+                {...register("sentimentClassification", { required: "Sentiment classification is required." })}
+                type="radio"
+                value="Custom"
+                className="mt-1"
+                disabled={!isPremiumUser}
+              />
+              <div className="w-full">
+                <p className="font-semibold">Custom Sentiment Classification</p>
+                <input
+                  {...register("customSentiments", {
+                    validate: (value, formValues) => {
+                      const isCustomSelected = formValues.sentimentClassification === "Custom";
+
+                      if (isCustomSelected && (!value || value.trim() === '')) {
+                        return "Please specify custom sentiment categories.";
+                      }
+
+                      // If there's any value at all (regardless of radio selection), validate it
+                      if (value && value.trim() !== '') {
+                        const pattern = /^[\p{L}\p{M}\s,''\-]+$/u;
+                        if (!pattern.test(value.trim())) {
+                          return "Custom sentiments may only contain letters, spaces, commas, apostrophes, and hyphens (no numbers or special symbols)";
+                        }
+                      }
+
+
+
+                      return true;
+                    }
+                  })}
+                  type="text"
+                  disabled={!isPremiumUser}
+                  placeholder= "Enter custom sentiments separated by commas"
+                  className="border border-gray-300 rounded px-3 py-2 mt-2 w-full"
+                />
+                {errors.customSentiments && <span className="text-red-500 text-sm block mt-1">{errors.customSentiments.message}</span>}
+                <div className="flex space-x-4 text-sm text-gray-600 mt-1">
+                  {watch("customSentiments")?.split(',').map((sentiment, index) => (
+                    <span key={index}>{sentiment.trim()}</span>
+                  ))}
+                </div>
+              </div>
+            </label>                       
           </div>
           {errors.sentimentClassification && <span className="text-red-500 text-sm">{errors.sentimentClassification.message}</span>}
         </fieldset>
@@ -517,12 +578,12 @@ console.log('isAnonymous:', isAnonymous);
         </table>
         {errors.aiModel && <span className="text-red-500 text-sm">{errors.aiModel.message}</span>}
       </fieldset>
-        <button 
+        <button
           type="submit"
-          disabled={isSubmitting} //disable if submitting or anonymous without captcha token
+          disabled={isSubmitting || !isValid}
           className={`px-8 py-3 rounded-lg text-xl font-semibold transition-colors ${
-            isSubmitting 
-              ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+            (isSubmitting || !isValid)
+              ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
               : 'bg-blue-500 text-white hover:bg-blue-600'
           }`}
         >

@@ -109,6 +109,7 @@ function createExcelWithSentiment(originalData, sentimentResults, fileBuffer, sh
 
 function estimateTokenUsage(columnData, sentimentClassification) {
   // Calculate the fixed prompt template size
+  let config; 
   const sentimentOptions = {
     'Basic': {
       options: ['1: Positive', '2: Neutral', '3: Negative'],
@@ -124,7 +125,31 @@ function estimateTokenUsage(columnData, sentimentClassification) {
     }
   };
 
-  const config = sentimentOptions[sentimentClassification];
+  if (!sentimentClassification.includes('Basic') &&
+      !sentimentClassification.includes('Granular') &&
+      !sentimentClassification.includes('Dr.Ekman')
+  ) {
+    console.log('Custom sentiment detected');
+    sentimentOptions['Custom'] = {
+      options: sentimentClassification.split(',').map((sentiment, index) => `${index + 1}: ${sentiment.trim()}`),
+      description: 'custom sentiment'
+    };
+     config = {
+      options: sentimentClassification.split(',').map((sentiment, index) => `${index + 1}: ${sentiment.trim()}`),
+      description: 'custom sentiment'
+    };
+    const pattern = /^[\p{L}\p{M}\s,''\-]+$/u;
+    const sentiments = sentimentClassification.split(',').map(s => s.trim());
+    for (const sentiment of sentiments) {
+      if (!pattern.test(sentiment)) {
+        throw new Error("Custom sentiments may only contain letters, spaces, commas, apostrophes, and hyphens (no numbers or special symbols)");
+      }
+    }
+
+  }
+  else {
+    config = sentimentOptions[sentimentClassification];
+  }
   
   // Calculate fixed template tokens (the parts that don't change)
   const templateStart = `Classify the ${config.description} for each text. Answer only with an array of the corresponding numbers:\n\n`;
@@ -159,7 +184,7 @@ function estimateTokenUsage(columnData, sentimentClassification) {
   return estimatedTotalTokens;
 }
 
-async function checkUserStatus(userId, estimatedTokens, supabase, model) { 
+async function checkUserStatus(userId, estimatedTokens, supabase, model, sentimentClassification) { 
   try {
     const { data: users, error } = await supabase
       .from('users')
@@ -174,6 +199,12 @@ async function checkUserStatus(userId, estimatedTokens, supabase, model) {
     const premiumModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'claude-sonnet-4-20250514'];
     if (model && premiumModels.includes(model) && !users?.subscription_id) {
       throw new Error(`The selected AI model "${model}" is available for premium users only. Please upgrade your account to access this model.`);
+    }
+    const validFreeClassifications = ['Basic', 'Granular', 'Dr.Ekman'];    
+    if (!validFreeClassifications.includes(sentimentClassification)) {
+      if (!users?.subscription_id) {
+        throw new Error(`Custom sentiment classification is available for premium users only. Please upgrade your account to access this classification.`);
+      }
     }
     console.log('User data retrieved:', users);
     return checkLimitsAndReturn(users.daily_usage_count, estimatedTokens, supabase, users.subscription_id);
@@ -281,11 +312,10 @@ async function parseFormData({fields, files}) {
   }
 
   // Validate sentiment classification
-  const validClassifications = ['Basic', 'Granular', 'Dr.Ekman'];
-  if (!validClassifications.includes(sentimentClassification)) {
-    throw new Error("Invalid sentiment classification. Must be Basic, Granular, or Dr.Ekman.");
-  }
-
+  // const validClassifications = ['Basic', 'Granular', 'Dr.Ekman'];
+  // if (!validClassifications.includes(sentimentClassification)) {
+  //   throw new Error("Invalid sentiment classification. Must be Basic, Granular, Dr.Ekman.");
+  // }
   return { file, textColumn, sentimentClassification, aiModel, sheetName };
 }
 
@@ -353,13 +383,18 @@ async function parseExcel(file, requestedSheetName) {
     }
     
     const headers = jsonData[0].map(header => String(header).trim());
-    const data = jsonData.slice(1).map(row => {
-      const rowObj = {};
-      headers.forEach((header, index) => {
-        rowObj[header] = row[index] || '';
+    const data = jsonData.slice(1)
+      .filter(row => {
+        // Skip completely empty rows (where all cells are empty or whitespace)
+        return row.some(cell => cell !== '' && String(cell).trim() !== '');
+      })
+      .map(row => {
+        const rowObj = {};
+        headers.forEach((header, index) => {
+          rowObj[header] = row[index] || '';
+        });
+        return rowObj;
       });
-      return rowObj;
-    });
     
     return {
       data: data,
@@ -439,6 +474,7 @@ function extractColumnData(parsedResult, textColumn) {
 // =============================================================================
 
 function generatePrompt(batchTexts, sentimentClassification) {
+  let config;
   const sentimentOptions = {
     'Basic': {
       options: ['1: Positive', '2: Neutral', '3: Negative'],
@@ -451,12 +487,24 @@ function generatePrompt(batchTexts, sentimentClassification) {
     'Dr.Ekman': {
       options: ['1: Anger', '2: Disgust', '3: Fear', '4: Happiness', '5: Sadness', '6: Surprise'],
       description: 'emotion according to Dr. Ekman\'s six basic emotions'
-    }
+    },
   };
-
-  const config = sentimentOptions[sentimentClassification];
-  if (!config) {
-    throw new Error(`Invalid sentiment classification: ${sentimentClassification}`);
+  if (!sentimentClassification.includes('Basic') &&
+      !sentimentClassification.includes('Granular') &&
+      !sentimentClassification.includes('Dr.Ekman')
+  ) {
+    console.log('Custom sentiment detected');
+    sentimentOptions['Custom'] = {
+      options: sentimentClassification.split(',').map((sentiment, index) => `${index + 1}: ${sentiment.trim()}`),
+      description: 'custom sentiment'
+    };
+     config = {
+      options: sentimentClassification.split(',').map((sentiment, index) => `${index + 1}: ${sentiment.trim()}`),
+      description: 'custom sentiment'
+    };
+  }
+  else {
+    config = sentimentOptions[sentimentClassification];
   }
 
   return `Classify the ${config.description} for each text. Answer only with an array of the corresponding numbers:
@@ -670,6 +718,18 @@ function parseAIResponse(response, expectedCount, sentimentClassification) {
       6: 'Surprise'
     }
   };
+    if (!sentimentClassification.includes('Basic') &&
+      !sentimentClassification.includes('Granular') &&
+      !sentimentClassification.includes('Dr.Ekman')) {
+    // Custom sentiment classification
+    const customSentiments = sentimentClassification.split(',').map(s => s.trim());
+    const customMap = {};
+    customSentiments.forEach((sentiment, index) => {
+      customMap[index + 1] = sentiment;
+    });
+    sentimentMaps['Custom'] = customMap;
+    sentimentClassification = 'Custom';
+  }
 
   const sentimentMap = sentimentMaps[sentimentClassification];
   const validRange = Object.keys(sentimentMap).map(k => parseInt(k));
@@ -927,7 +987,7 @@ export async function processFileUpload(parsedFormData, userId, supabase) {
     const estimatedTokens = estimateTokenUsage(columnData, sentimentClassification);
     console.log(`Estimated token usage: ${estimatedTokens}`);
 
-    const usageCheck = await checkUserStatus(userId, estimatedTokens, supabase, aiModel);
+    const usageCheck = await checkUserStatus(userId, estimatedTokens, supabase, aiModel, sentimentClassification);
     console.log('Usage check passed:', usageCheck);
 
     // Pass userId through to performSentimentAnalysis

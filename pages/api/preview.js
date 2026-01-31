@@ -42,6 +42,12 @@ async function parseFormData(req) {
     throw new Error("No file provided");
   }
 
+  // Check file size (3MB limit)
+  const maxSize = 3 * 1024 * 1024; // 3MB in bytes
+  if (file.size > maxSize) {
+    throw new Error("File size must be less than 3MB limit. Please upload a smaller file.");
+  }
+
   // Validate using our robust detector (mimetype OR extension)
   const fileType = determineFileType(file);
   if (!['csv', 'excel'].includes(fileType)) {
@@ -180,10 +186,11 @@ export default async function handler(req, res) {
     
     const clientErrors = [
       'No file provided',
-      'Unsupported file type', 
+      'Unsupported file type',
       'Invalid file type',
       'not found',
-      'is empty'
+      'is empty',
+      'exceeds 3MB limit'
     ];
     
     const isClientError = clientErrors.some(msg => 
