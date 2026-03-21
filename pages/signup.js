@@ -2,6 +2,9 @@ import { useForm } from 'react-hook-form';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import Navbar from '@/components/Navbar';
+import Link from 'next/link';
+import Squares from '@/components/Squares';
 
 export default function SignUp() {
   const router = useRouter();
@@ -48,12 +51,17 @@ export default function SignUp() {
   const passwordsMatch = password === confirmPassword;
 
   return (
-    <div>
+    <>
+		<div className="fixed inset-0 -z-10 blur-[1.5px]">
+			<Squares speed={0.2} cellWidth={100} cellHeight={40} direction="up" />
+		</div>    
+    <Navbar />    
+    <div className="flex-1 mb-12 border max-w-4xl mx-auto p-6 mt-12 rounded outlined">
       <h1>Sign Up</h1>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <label>
-          Email:
-          <input type="email" {...register('email', {
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 justify-center items-center mt-8">
+        <label className="flex flex-col gap-1">
+          Email
+          <input className="outlined px-2" type="email" {...register('email', {
             required: 'Email address is required',
             pattern: {
               value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
@@ -63,28 +71,28 @@ export default function SignUp() {
           {errors.email && <span className="text-red-500">{errors.email.message}</span>}
         </label>
         
-        <label>
-          Password:
-          <input type="password" {...register('password', {
+        <label className="flex flex-col gap-1">
+          Password
+          <input className="outlined px-2 py-1" type="password" {...register('password', {
             required: 'Password is required',
             validate: () => allRequirementsMet || 'Password does not meet all requirements'
           })} />
           {errors.password && <span className="text-red-500">{errors.password.message}</span>}
         </label>
 
-        <label>
-          Confirm Password:
-          <input type="password" {...register('confirmPassword', {
+        <label className="flex flex-col gap-1">
+          Confirm Password
+          <input className="outlined px-2 py-1" type="password" {...register('confirmPassword', {
             required: 'Please confirm your password',
             validate: (value) => value === password || 'Passwords do not match'
           })} />
           {errors.confirmPassword && <span className="text-red-500">{errors.confirmPassword.message}</span>}
         </label>
-
+          <Link className=" outlined p-1 cursor-pointer hover:underline" href="/login">Already have an account?</Link>
         {/* ✅ Real-time password requirements display */}
         {password && (
-          <div className="mt-2.5 p-2.5 border border-gray-300 rounded bg-gray-50">
-            <h4>Password Requirements:</h4>
+          <div className=" p-2.5 border border-gray-300 rounded outlined">
+            <h4>Password Requirements</h4>
             <ul className="m-0 pl-5">
               <li className={passwordRequirements.minLength ? 'text-green-600' : 'text-red-600'}>
                 {passwordRequirements.minLength ? '✓' : '✗'} At least 12 characters
@@ -111,7 +119,7 @@ export default function SignUp() {
         <button 
           type="submit" 
           disabled={!allRequirementsMet || !passwordsMatch || isSubmitSuccessful}
-          className={(allRequirementsMet && passwordsMatch) ? 'opacity-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'}
+          className={`bg-foreground text-background ${(allRequirementsMet && passwordsMatch) ? 'opacity-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
         >
           Sign Up
         </button>
@@ -119,5 +127,6 @@ export default function SignUp() {
       {isSubmitSuccessful && <p>Sign up successful! If this is your first time signing up with this email, 
         a verification email has been sent. You will be redirected to log in shortly.</p>}
     </div>
+  </>    
   );
 }

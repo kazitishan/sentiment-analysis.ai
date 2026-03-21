@@ -29,6 +29,7 @@ deploying to production:
   npm run start to run the app in production mode
 */
 export default function Home() {
+  
   return (
     <> {/* to group multiple elements/components together */}
       <Head>

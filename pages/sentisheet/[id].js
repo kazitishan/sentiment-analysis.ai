@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabase';
 import { createServerClient } from '@supabase/ssr'
 import Sidebar from '@/components/Sidebar';
+import Squares from '@/components/Squares';
 
 
 //saves previously stored sentisheets
@@ -84,7 +85,7 @@ export default function SentisheetResults({ results, error, sentiSheetLinks }) {
   if (error) {
     return (
       <div className="flex">
-        <Sidebar sentiSheetLinks={sentiSheetLinks} />
+        <Sidebar/>
         <main className="container mx-auto p-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <h1 className="text-xl font-semibold text-red-800 mb-2">Error</h1>
@@ -135,10 +136,13 @@ export default function SentisheetResults({ results, error, sentiSheetLinks }) {
   let sentiStatistics = Object.entries(sentimentStatistics(results.analysis_results.sentiments)); //object to an array of [key, value] pairs to map over an array
   return (
     <div className="flex">
-      <Sidebar sentiSheetLinks={sentiSheetLinks} />
-    <main className="container mx-auto p-6">
+      <Sidebar/>
+    <div className="fixed inset-0 -z-10 blur-[1.5px]">
+			<Squares speed={0.2} cellWidth={100} cellHeight={40} direction="up" />
+		</div>  
+    <main className="flex-col mx-auto p-6 bg-background rounded-2xl outlined  max-w-7xl my-8">
       <h1 className="text-2xl font-bold mb-4">{results.file_name} Sentiment Analysis Results</h1>
-    <button onClick={handleDownload} disabled={downloading}>
+    <button onClick={handleDownload} disabled={downloading} className="mx-auto block outlined hover:cursor-pointer">
       {downloading ? 'Downloading...' : 'Download Results'}
     </button>
     <div className="mt-6">

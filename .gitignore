@@ -48,3 +48,6 @@ results/
 
 # local vscode settings
 .vscode/
+
+# claude local settings
+.claude/

@@ -32,7 +32,7 @@ export async function middleware(req) {
 
   const { data: { user }, error } = await supabase.auth.getUser()
 
-  const authPages = ['/login', '/sign-up']
+  const authPages = ['/login', '/signup']
   if (authPages.includes(pathname)) {
     if (user && !user.is_anonymous && !error) {
       return NextResponse.redirect(new URL('/create', req.url))

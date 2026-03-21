@@ -7,6 +7,8 @@ import { useSearchParams } from 'next/navigation'
 import CheckoutForm from '@/components/CheckoutForm';
 import ReturnCheckout from '@/components/ReturnCheckout';
 import Stripe from 'stripe';
+import Squares from '@/components/Squares';
+import Sidebar from '@/components/Sidebar';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -96,12 +98,15 @@ export default function Account({ isPremiumUser, subscriptionPrice, userEmail })
     required: "Password is required"
   };
 
-  supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_OUT') {
-      setSession(null);
-      router.push('/login');
-    }
-  });
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        router.push('/login');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
 const onSubmitDeleteAccount = async (data) => {
   try {
     const response = await fetch('/api/delete-account', {
@@ -130,71 +135,92 @@ const onSubmitDeleteAccount = async (data) => {
 };
 
   return (
-    <main className="container mx-auto max-w-2xl p-8 flex flex-col gap-6">
+    <div className="flex h-screen overflow-hidden">
+    <Sidebar />
+    <main className="relative flex-1 p-8 flex flex-col gap-6 overflow-y-auto">
+        <div className="fixed inset-0 -z-10 blur-[1.5px]">
+          <Squares
+            speed={0.2}
+            cellWidth={100}
+            cellHeight={40}
+            direction="up"
+          />
+        </div>
+
       {session ? (
-        <>
-          <h1 className="text-4xl font-bold">Your Account</h1>
+        <div className="flex flex-col gap-4 bg-foreground rounded-2xl p-12 mx-auto outlined w-full max-w-2xl">
+          <h1 className="text-4xl font-bold ">Your Account</h1>
 
           {/* Change Password */}
-          <div className="rounded-2xl border-2 border-foreground/10 p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2>Change Password</h2>
-              <button onClick={() => setChangePasswordClicked(!changePasswordClicked)} className="!px-4 !py-2 text-sm bg-foreground text-background">
+          <div className=" p-6 flex flex-col gap-4 outlined ">
+            <div className="flex items-center justify-between gap-2">
+              <h2 >Change Password</h2>
+              <button onClick={() => setChangePasswordClicked(!changePasswordClicked)} className="!px-4 !py-2 text-sm bg-foreground text-background hover:cursor-pointer">
                 {changePasswordClicked ? "Cancel" : "Change"}
               </button>
             </div>
-            {changePasswordResult && <p className="text-sm text-foreground/60">{changePasswordResult}</p>}
+            {changePasswordResult && <p className="text-sm">{changePasswordResult}</p>}
             {changePasswordClicked && (
               <form onSubmit={handleSubmitPassword(onSubmitChangePassword)} className="flex flex-col gap-3">
                 <input type="password" placeholder="New Password" className="border border-foreground/20 rounded-xl px-4 py-2 bg-background text-foreground w-full" {...registerPassword("password", newPasswordOptions)} />
                 <input type="password" placeholder="Confirm New Password" className="border border-foreground/20 rounded-xl px-4 py-2 bg-background text-foreground w-full" {...registerPassword("confirmPassword", confirmPasswordOptions)} />
                 {passwordErrors.password && <span className="text-red-500 text-sm">{passwordErrors.password.message}</span>}
                 {passwordErrors.confirmPassword && <span className="text-red-500 text-sm">{passwordErrors.confirmPassword.message}</span>}
-                <button type="submit" className="bg-foreground text-background self-start">Update Password</button>
+                <button type="submit" className="bg-foreground text-background self-start hover:cursor-pointer">
+                  Update Password
+                </button>
               </form>
             )}
           </div>
 
           {/* Delete Account */}
           <div className="rounded-2xl border-2 border-red-500/20 p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-red-500">Delete Account</h2>
-              <button onClick={() => setDeleteAccountClicked(!deleteAccountClicked)} className="!px-4 !py-2 text-sm bg-red-500 text-white">
+              <button onClick={() => setDeleteAccountClicked(!deleteAccountClicked)} className="!px-4 !py-2 text-sm bg-red-500 text-white hover:cursor-pointer">
                 {deleteAccountClicked ? "Cancel" : "Delete"}
               </button>
             </div>
-            {deleteAccountResult && <p className="text-sm text-foreground/60">{deleteAccountResult}</p>}
+            {deleteAccountResult && <p className="text-sm">{deleteAccountResult}</p>}
             {deleteAccountClicked && (
               <form onSubmit={handleSubmitDelete(onSubmitDeleteAccount)} className="flex flex-col gap-3">
-                <input type="password" placeholder="Confirm your password" className="border border-foreground/20 rounded-xl px-4 py-2 bg-background text-foreground w-full" {...registerDelete("password", deletePasswordOptions)} />
+                <input type="password" placeholder="Confirm your password" className="!bg-red-500 text-foreground w-full" {...registerDelete("password", deletePasswordOptions)} />
                 {deleteErrors.password && <span className="text-red-500 text-sm">{deleteErrors.password.message}</span>}
-                <button type="submit" className="bg-red-500 text-white self-start">Confirm Deletion</button>
+                <button type="submit" className="bg-red-500 text-white self-start hover:cursor-pointer">
+                  Confirm Deletion
+                </button>
               </form>
             )}
           </div>
 
           {/* Subscription */}
           {!isPremiumUser && !isBuyingSubscription && (
-            <button onClick={() => setIsBuyingSubscription(true)} className="rainbow-transition bg-gradient-to-b from-blue-700 to-violet-600 text-white self-start">
+            <button onClick={() => setIsBuyingSubscription(true)} className="mx-auto rainbow-transition bg-gradient-to-b from-blue-700 to-violet-600 text-white self-start hover:cursor-pointer">
               Upgrade to Pro
             </button>
           )}
           {isBuyingSubscription && !isPremiumUser && (
-            <div className="rounded-2xl border-2 border-foreground/10 p-6 flex flex-col gap-4 items-center">
+            <div className="rounded-2xl border-2 border-foreground/10 p-6 flex flex-col gap-4 items-center text-background text-center">
               <h2>You&apos;re one step away from unlocking all of sentiment-analysis.ai.</h2>
-              <p className="text-foreground/60">Upgrade to Pro for more features and insights.</p>
+              <p className="text-center text-background">Upgrade to Pro for more features and insights.</p>
               <CheckoutForm userEmail={userEmail} />
             </div>
           )}
           {boughtSubscription && <ReturnCheckout />}
-        </>
+
+          <button onClick={async () => {
+            await supabase.auth.signOut();
+            router.push('/login');
+          }} className="outlined text-foreground  self-start cursor-pointer hover:cursor-pointer mx-auto">Log Out</button>
+        </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold">You must be logged in to view your account.</h1>
-          <p className="text-foreground/60">You will be redirected shortly.</p>
+        <div className="flex flex-col gap-2 bg-background rounded-2xl p-12  mx-auto items-center outlined">
+          <h1 className="text-4xl font-bold text-foreground">You must be logged in to view your account.</h1>
+          <p className="text-foreground">You will be redirected shortly.</p>
         </div>
       )}
     </main>
+    </div>
   );
 }
 

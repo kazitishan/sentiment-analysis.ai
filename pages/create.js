@@ -2,16 +2,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { set, useForm } from 'react-hook-form';
 import { useRouter } from 'next/router';
-import Header from '@/components/Header';
 import { supabase } from '@/lib/supabase';
 import { createServerClient } from '@supabase/ssr'
 import HCaptcha from '@hcaptcha/react-hcaptcha';
 import Sidebar from '@/components/Sidebar';
-import UploadIcon from '../public/file-earmark-plus-fill.svg';
 
 
 
-export default function NewSentiSheetWithPreview({ isPremiumUser, isAnonymous, sentiSheetLinks }) {
+export default function NewSentiSheetWithPreview({ isPremiumUser, isAnonymous }) {
   const { register, handleSubmit, resetField, formState: { errors, isSubmitting, isValid }, setValue, watch } = useForm({
     mode: 'onChange' //enable real-time validation
   });
@@ -257,16 +255,15 @@ const timeEstimation = (previewData) => {
 console.log('isAnonymous:', isAnonymous);
   return (
     <div className="flex">
-      <Sidebar sentiSheetLinks={sentiSheetLinks} />
+      <Sidebar/>
       <main className="flex-1">
       {!isSubmitting &&
         <>
-        <Header bodyText="Submit SentiSheet request" className="text-center " />
-      <progress value={calculateProgress()} max="2" className="w-full" /> {/*function is always called per render*/}
-      
-      
+        <h1>Submit SentiSheet Request</h1>
+      <progress value={calculateProgress()} max="2" className="w-full mt-2" /> {/*function is always called per render*/}
+
       <form onSubmit={handleSubmit(onSubmit)} className="max-w-9xl mx-auto p-6">
-          <h2 className="text-2xl font-semibold my-1">Spreadsheet file upload</h2>
+        <label className="text-lg font-medium">Spreadsheet file upload
           <input 
               {...register("file", {
                 required: "No spreadsheet selected.",
@@ -296,14 +293,8 @@ console.log('isAnonymous:', isAnonymous);
               type="file"
               accept=".xlsx, .xls, .csv"
               onChange={handleFileUpload}
-              className='hidden'
-              id = "file"
             />
-            {/*flex makes the element a block-level flex container that stretches full width, while inline-flex keeps it sized to its content: */}
-            <label for ="file" className="inline-flex items-center cursor-pointer rounded bg-foreground p-2.5 gap-1 text-background text-2xl pr-28">
-              <UploadIcon className="inline-block [&_path]:fill-background" />Upload            
-            </label>
-        
+        </label>
         {previewError && <span className="text-red-500 text-sm">{previewError}</span>}
         {errors.file && <span className="text-red-500 text-sm">{errors.file.message}</span>} 
 
@@ -321,13 +312,13 @@ console.log('isAnonymous:', isAnonymous);
         )}
 
         {previewData && (
-          <div className="w-full">
-            <h2 className="text-2xl font-semibold my-1">Spreadsheet Preview {previewData.fileName}</h2>
-            <p className="text-foreground/70">
+          <div className="w-full space-y-4">
+            <h2 className="text-2xl font-semibold">Spreadsheet Preview</h2>
+            <p className="text-foreground/60">
               Showing {previewData.previewData.length} of {previewData.totalRows} rows. Click on a column to select it for sentiment analysis.
             </p>
             {/* Column Selection Input */}
-            <div className="flex items-center space-x-4 bg-foreground/5 p-4 rounded-2xl">
+            <div className="flex items-center space-x-4 bg-foreground/5 p-4 rounded-lg">
               <label className="text-lg font-medium">
                 Selected Column:
                 <input
@@ -340,11 +331,11 @@ console.log('isAnonymous:', isAnonymous);
                   type="number"
                   min="1"
                   max={previewData.headers.length}
-                  className="border border-foreground/20 rounded px-3 py-2 w-20 text-center bg-background text-foreground"
+                  className="border border-foreground/20 rounded px-3 py-2 w-20 text-center bg-background"
                   onChange={handleTextColumnChange}
                 />
               </label>
-              <span className="text-foreground/70">
+              <span className="text-foreground/60">
                 of {previewData.headers.length}
                 {selectedColumn && (
                   <span className="font-medium text-foreground">
@@ -366,18 +357,18 @@ console.log('isAnonymous:', isAnonymous);
                         <th
                           key={index}
                           onClick={() => handleColumnSelect(index + 1)}
-                          className={`p-4 text-sm font-medium cursor-pointer transition-colors ${
+                          className={`px-4 py-3 text-left text-sm font-medium cursor-pointer transition-colors ${
                             selectedColumn === index + 1
-                              ? 'bg-foreground/10 text-foreground'
-                              : 'opacity-60 hover:bg-foreground/5'
+                              ? 'bg-foreground/10'
+                              : 'hover:bg-foreground/5'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="truncate">{header ? header : '(Unnamed Column)'}</span>
-                            <span className="text-xs opacity-60 ml-2">#{index + 1}</span>
+                            <span className="truncate">{header}</span>
+                            <span className="text-xs text-foreground/60 ml-2">#{index + 1}</span>
                           </div>
                           {selectedColumn === index + 1 && (
-                            <div className="text-xs text-foreground mt-1">Selected for analysis</div>
+                            <div className="text-xs text-foreground/60 mt-1">Selected for analysis</div>
                           )}
                         </th>
                       ))}
@@ -385,15 +376,15 @@ console.log('isAnonymous:', isAnonymous);
                   </thead>
                   <tbody className="bg-background">
                     {previewData.previewData.map((row, rowIndex) => (
-                      <tr key={rowIndex} className="border-t-2 border-foreground/10">
+                      <tr key={rowIndex} className="border-t-2 border-foreground/10 hover:bg-foreground/5 transition-colors">
                         {previewData.headers.map((header, colIndex) => (
                           <td
                             key={colIndex}
                             onClick={() => handleColumnSelect(colIndex + 1)}
-                            className={`p-4 text-sm cursor-pointer transition-colors ${
+                            className={`px-4 py-3 text-sm cursor-pointer transition-colors ${
                               selectedColumn === colIndex + 1
-                                ? 'bg-foreground/10'
-                                : 'hover:bg-foreground/5'
+                                ? 'bg-foreground/5'
+                                : ''
                             }`}
                           >
                             <div className="max-w-xs truncate">
@@ -408,7 +399,7 @@ console.log('isAnonymous:', isAnonymous);
               </div>
             {/* Sheet Tabs for Excel - Moved to bottom like real Excel */}
             {previewData.fileType === 'excel' && previewData.availableSheets && previewData.availableSheets.length > 1 && (
-              <div className="border-t-2 border-foreground/10 p-2">
+              <div className="bg-foreground/5 border-t border-foreground/10 p-2">
                 <div className="flex space-x-1">
                   {/*FIX: buttons default to submit when inside a form*/}
                   {previewData.availableSheets.map((sheet, index) => (
@@ -416,15 +407,16 @@ console.log('isAnonymous:', isAnonymous);
                       key={index}
                       type="button"
                       onClick={() => handleSheetChange(sheet)}
+                      className='px-3 py-1 rounded-t-lg border border-foreground/10 text-sm hover:cursor-pointer'
                     >
                       {sheet}
-                    </button>
+                    </button> 
                   ))}
                 </div>
               </div>
             )}
             {previewData.fileType === 'excel' && previewData.availableSheets && (
-              <div className="bg-foreground/5 rounded-2xl p-4">
+              <div className="bg-foreground/5 rounded-lg p-4">
                 <p className="text-sm text-foreground/60">
                   <strong>Current Sheet:</strong> {previewData.currentSheet}
                   {previewData.availableSheets.length > 1 && (
@@ -441,10 +433,10 @@ console.log('isAnonymous:', isAnonymous);
         )}
         {/* Sentiment Classification - Always visible */}
         <fieldset className="w-full">
-          <legend className="text-2xl font-semibold my-2">Sentiment Classification</legend>
+          <legend className="text-2xl font-semibold py-2">Sentiment Classification</legend>
           
-          <div className="space-y-4">
-            <label className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+          <div className="space-y-4 ">
+            <label className="flex items-start space-x-3 p-4 outlined hover:bg-gray-50 cursor-pointer">
               <input 
                 {...register("sentimentClassification", { required: "Sentiment classification is required." })}
                 type="radio"
@@ -453,14 +445,14 @@ console.log('isAnonymous:', isAnonymous);
               />
               <div>
                 <p className="font-semibold">Basic Sentiment Classification</p>
-                <div className="flex space-x-4 text-sm text-foreground/70 mt-1">
+                <div className="flex space-x-4 text-sm text-gray-600 mt-1">
                   <span>Positive</span>
                   <span>Neutral</span>
                   <span>Negative</span>
                 </div>
               </div>
             </label>
-            <label className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+            <label className="flex items-start space-x-3 p-4 outlined hover:bg-gray-50 cursor-pointer">
               <input 
                 {...register("sentimentClassification", { required: "Sentiment classification is required." })}
                 type="radio"
@@ -469,7 +461,7 @@ console.log('isAnonymous:', isAnonymous);
               />
               <div>
                 <p className="font-semibold">Granular Sentiment Classification</p>
-                <div className="flex space-x-4 text-sm text-foreground/70 mt-1">
+                <div className="flex space-x-4 text-sm text-gray-600 mt-1">
                   <span>Very Positive</span>
                   <span>Positive</span>
                   <span>Neutral</span>
@@ -478,7 +470,7 @@ console.log('isAnonymous:', isAnonymous);
                 </div>
               </div>
             </label>
-              <label className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+              <label className="flex items-start space-x-3 p-4 outlined hover:bg-gray-50 cursor-pointer">
               <input 
                 {...register("sentimentClassification", { required: "Sentiment classification is required." })}
                 type="radio"
@@ -487,7 +479,7 @@ console.log('isAnonymous:', isAnonymous);
               />
               <div>
                 <p className="font-semibold">Dr. Ekman's Six Basic Emotions</p>
-                <div className="flex space-x-4 text-sm text-foreground/70 mt-1">
+                <div className="flex space-x-4 text-sm text-gray-600 mt-1">
                   <span>Anger</span>
                   <span>Disgust</span>
                   <span>Fear</span>
@@ -497,7 +489,7 @@ console.log('isAnonymous:', isAnonymous);
                 </div>
               </div>
             </label> 
-              <label className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+              <label className="flex items-start space-x-3 p-4 outlined hover:bg-gray-50 cursor-pointer">
               <input
                 {...register("sentimentClassification", { required: "Sentiment classification is required." })}
                 type="radio"
@@ -532,7 +524,7 @@ console.log('isAnonymous:', isAnonymous);
                   type="text"
                   disabled={!isPremiumUser}
                   placeholder= "Enter custom sentiments separated by commas"
-                  className="border border-gray-300 rounded px-3 py-2 mt-2 w-full text-foreground/70"
+                  className="border border-gray-300 rounded px-3 py-2 mt-2 w-full"
                 />
                 {errors.customSentiments && <span className="text-red-500 text-sm block mt-1">{errors.customSentiments.message}</span>}
                 <div className="flex space-x-4 text-sm text-gray-600 mt-1">
@@ -546,8 +538,8 @@ console.log('isAnonymous:', isAnonymous);
           {errors.sentimentClassification && <span className="text-red-500 text-sm">{errors.sentimentClassification.message}</span>}
         </fieldset>
         <fieldset className="w-full">
-        <legend className="text-2xl font-semibold mb-4">AI Model</legend>
-        <table className="w-full text-left border-collapse border">
+        <legend className="text-2xl font-semibold py-2">AI Model</legend>
+        <table className="w-full text-left border-collapse border space-x-3 p-4 outlined">
           <thead>
             <tr className="">
               <th className="p-3">Model name</th>
@@ -611,7 +603,7 @@ console.log('isAnonymous:', isAnonymous);
   }
       {isSubmitting && (
         <>
-          <Header bodyText="Processing request" className="text-center " />
+          <h1 className="text-center">Processing request</h1>
           <p> We received your SentiSheet request and are currently processing your request right now. </p>
           <p> Estimated processing time: {timeEstimation(previewData)} seconds </p>
         </>
@@ -647,7 +639,6 @@ export async function getServerSideProps({ req, res }) {
   );
 
   let isPremiumUser = false;
-  let sentiSheetLinks = [];
   let isAnonymous = true;
 
   try {
@@ -672,10 +663,7 @@ export async function getServerSideProps({ req, res }) {
       if (!userResult.error && userResult.data?.subscription_id) {
         isPremiumUser = true;
       }
-
-      if (!sheetsResult.error && sheetsResult.data) {
-        sentiSheetLinks = sheetsResult.data;
-      }
+      console.log('userResult:', userResult);
     }
   } catch (error) {
     console.error('Error in getServerSideProps:', error);
@@ -683,7 +671,6 @@ export async function getServerSideProps({ req, res }) {
 
   return {
     props: {
-      sentiSheetLinks,
       isPremiumUser,
       isAnonymous,
     },

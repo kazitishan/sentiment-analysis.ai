@@ -297,6 +297,7 @@ async function parseFormData({fields, files}) {
   const aiModel = fields.aiModel?.[0] || 'gemini-2.5-flash-lite'; //defaults to gemini-2.5-flash-lite instead of undefined (or errors without optional chaining)
 
   if (!file || !textColumn || !sentimentClassification) {
+    console.log('Form data missing:', { file, textColumn, sentimentClassification });
     throw new Error("Missing required fields: file, textColumn, or sentimentClassification");
   }
 

@@ -38,8 +38,8 @@ export default function Navbar() {
   console.log('Navbar session:', session);
 
   return (
-    <nav aria-label="Landing page navigation">
-      <div className="flex justify-between items-center py-3 px-8">
+    <nav aria-label="Landing page navigation ">
+      <div className="flex justify-between items-center py-3 px-8 bg-background">
         <span className="flex items-center space-x-2 text-4xl font-bold">
           <Link href="/">
             <Image width={57} height={57} src="/sentiment-analysis.ai.svg" alt="Sentiment Analysis Logo" />
@@ -62,7 +62,7 @@ export default function Navbar() {
             <>
               <li><Link href="/help" className="hover:underline">Help</Link></li>
               <li><Link href="/login" className="hover:underline">Log in</Link></li>
-              <li><Link href="/sign-up" className="hover:underline">Sign up</Link></li>
+              <li><Link href="/signup" className="hover:underline">Sign up</Link></li>
             </>
           )}
         </ul>
