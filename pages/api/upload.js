@@ -60,7 +60,7 @@ export default async function handler(req, res) {
     const [fields, files] = await form.parse(req);
 
     // 2.6. Captcha verification for anonymous users
-    if (!user.email) {
+    if (!user.email && process.env.NODE_ENV === 'production') {
       const captchaToken = fields.captchaToken?.[0];
 
       if (!captchaToken) {

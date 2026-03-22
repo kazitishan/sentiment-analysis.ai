@@ -51,3 +51,6 @@ results/
 
 # claude local settings
 .claude/
+
+# cypress user authentication details
+cypress.env.json

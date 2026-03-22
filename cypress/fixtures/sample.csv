@@ -1,0 +1,6 @@
+text,expected_sentiment
+"I love this product! It's amazing!",positive
+"This is terrible and I hate it.",negative
+"The weather is okay today.",neutral
+"Absolutely fantastic experience!",positive
+"Worst purchase ever made.",negative

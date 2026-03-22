@@ -14,7 +14,7 @@ export default function Sidebar() {
   useEffect(() => {
   supabase.auth.getSession().then(({ data: { session } }) => {
     setIsAnonymous(!(session?.user && !session.user.is_anonymous));
-    if (session?.user && !session.user.is_anonymous) {
+    if (session?.user) {
       supabase.from('sentisheets')
         .select('id, file_name, created_at')
         .eq('user_id', session.user.id)

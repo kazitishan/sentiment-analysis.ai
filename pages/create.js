@@ -5,9 +5,10 @@ import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabase';
 import { createServerClient } from '@supabase/ssr'
 import HCaptcha from '@hcaptcha/react-hcaptcha';
+import { getHCaptchaConfig } from '../hcaptcha.config';
 import Sidebar from '@/components/Sidebar';
 
-
+const {siteKey } = getHCaptchaConfig();
 
 export default function NewSentiSheetWithPreview({ isPremiumUser, isAnonymous }) {
   const { register, handleSubmit, resetField, formState: { errors, isSubmitting, isValid }, setValue, watch } = useForm({
@@ -263,13 +264,14 @@ console.log('isAnonymous:', isAnonymous);
       <progress value={calculateProgress()} max="2" className="w-full mt-2" /> {/*function is always called per render*/}
 
       <form onSubmit={handleSubmit(onSubmit)} className="max-w-9xl mx-auto p-6">
-        <label className="text-lg font-medium">Spreadsheet file upload
+        <label className="text-2xl font-medium">Spreadsheet file upload
           <input 
               {...register("file", {
                 required: "No spreadsheet selected.",
+                onChange: handleFileUpload,
                 validate: {
                     fileType: (fileList) => {
-                      if (!fileList || fileList.length === 0) return true; 
+                      if (!fileList || fileList.length === 0) return true;
                       const file = fileList[0];
                       const allowedTypes = [
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -289,10 +291,9 @@ console.log('isAnonymous:', isAnonymous);
                       return true;
                     }
                   }
-              })} 
+              })}
               type="file"
               accept=".xlsx, .xls, .csv"
-              onChange={handleFileUpload}
             />
         </label>
         {previewError && <span className="text-red-500 text-sm">{previewError}</span>}
@@ -591,7 +592,7 @@ console.log('isAnonymous:', isAnonymous);
         </button>
           {isAnonymous && (
             <HCaptcha
-              sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY}
+              sitekey={siteKey}
               onVerify={token => setCaptchaToken(token)}
               ref={captcha}
             />
